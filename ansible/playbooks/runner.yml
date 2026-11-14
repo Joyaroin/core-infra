@@ -1,0 +1,139 @@
+# Sets up echoes as a Forgejo Actions runner.
+# Run with a Tailscale auth key (tag:ci) the first time:
+#   ansible-playbook playbooks/runner.yml -e tailscale_authkey=tskey-...
+- name: Forgejo Actions runner
+  hosts: runners
+  become: true
+
+  vars:
+    runner_version: "13.2.1"
+    forgejo_url: https://git.tailf69bc5.ts.net
+    runner_labels: "docker:docker://node:22-bookworm,ubuntu-latest:docker://node:22-bookworm"
+    runner_home: /var/lib/forgejo-runner
+
+  tasks:
+    - name: Install the guest agent and Docker
+      ansible.builtin.apt:
+        name:
+          - qemu-guest-agent
+          - docker.io
+          - acl # lets Ansible run tasks as the forgejo-runner user
+        update_cache: true
+
+    - name: Start the guest agent
+      ansible.builtin.service:
+        name: qemu-guest-agent
+        state: started
+
+    - name: Install Tailscale
+      ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
+      args:
+        creates: /usr/bin/tailscale
+
+    - name: Check whether Tailscale is logged in
+      ansible.builtin.command: tailscale status
+      register: tailscale_status
+      changed_when: false
+      failed_when: false
+
+    - name: Join the tailnet
+      # accept-dns=false: the tailnet's DNS is Pi-hole, which tag:ci can't reach.
+      ansible.builtin.command: tailscale up --authkey={{ tailscale_authkey }} --hostname=echoes --accept-dns=false
+      when: tailscale_status.rc != 0
+      no_log: true
+
+    # Without Tailscale DNS, point the git hostname at forgejo's Tailscale IP.
+    # The template is what cloud-init rebuilds /etc/hosts from on every boot.
+    - name: Make git.tailf69bc5.ts.net resolve
+      ansible.builtin.lineinfile:
+        path: "{{ item }}"
+        line: "100.95.34.20 git.tailf69bc5.ts.net"
+      loop:
+        - /etc/hosts
+        - /etc/cloud/templates/hosts.debian.tmpl
+
+    - name: Create the runner user
+      ansible.builtin.user:
+        name: forgejo-runner
+        system: true
+        home: "{{ runner_home }}"
+        groups: docker
+        append: true
+
+    - name: Download the runner
+      ansible.builtin.get_url:
+        url: "https://code.forgejo.org/forgejo/runner/releases/download/v{{ runner_version }}/forgejo-runner-{{ runner_version }}-linux-amd64"
+        dest: /usr/local/bin/forgejo-runner
+        mode: "0755"
+
+    - name: Write the runner config
+      ansible.builtin.copy:
+        dest: "{{ runner_home }}/config.yml"
+        owner: forgejo-runner
+        group: forgejo-runner
+        mode: "0640"
+        content: |
+          runner:
+            file: .runner
+            capacity: 2
+            timeout: 3h
+          container:
+            # Job containers can't use Tailscale's DNS, so point them at forgejo directly.
+            options: "--add-host=git.tailf69bc5.ts.net:100.95.34.20"
+            docker_host: "-"
+
+    - name: Check whether the runner is registered
+      ansible.builtin.stat:
+        path: "{{ runner_home }}/.runner"
+      register: runner_file
+
+    - name: Get a registration token from forgejo
+      ansible.builtin.command: >-
+        pct exec 203 -- su git -s /bin/sh -c
+        "/usr/local/bin/forgejo forgejo-cli actions generate-runner-token --config /etc/forgejo/app.ini"
+      delegate_to: joseph
+      become: false # already root there, and Proxmox has no sudo
+      register: runner_token
+      when: not runner_file.stat.exists
+      no_log: true
+
+    - name: Register the runner
+      ansible.builtin.command: >-
+        forgejo-runner register --no-interactive
+        --instance {{ forgejo_url }}
+        --token {{ runner_token.stdout }}
+        --name echoes
+        --labels {{ runner_labels }}
+      args:
+        chdir: "{{ runner_home }}"
+      become_user: forgejo-runner
+      when: not runner_file.stat.exists
+      no_log: true
+
+    - name: Install the runner service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/forgejo-runner.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Forgejo Runner
+          After=docker.service network-online.target
+          Wants=docker.service network-online.target
+
+          [Service]
+          User=forgejo-runner
+          Group=forgejo-runner
+          WorkingDirectory={{ runner_home }}
+          ExecStart=/usr/local/bin/forgejo-runner daemon --config {{ runner_home }}/config.yml
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start the runner
+      ansible.builtin.systemd_service:
+        name: forgejo-runner
+        state: started
+        enabled: true
+        daemon_reload: true
