@@ -48,6 +48,7 @@
       register: tailscale_status
       changed_when: false
       failed_when: false
+      check_mode: false # run even in --check, so drift checks see it
 
     - name: Join the tailnet
       # accept-dns=false: this is the tailnet's DNS server, so it shouldn't ask itself.

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Runs scripts/drift-check every Monday at 09:00 (or at the next wake, if the
+  Mac was asleep). Install or update:
+    cp scripts/drift-check.plist ~/Library/LaunchAgents/core-infra.drift-check.plist
+    launchctl bootout gui/$(id -u)/core-infra.drift-check 2>/dev/null
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/core-infra.drift-check.plist
+  Run it now: launchctl kickstart gui/$(id -u)/core-infra.drift-check
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>core-infra.drift-check</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/adhamsedik/core-infra/scripts/drift-check</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/adhamsedik/Library/Logs/core-infra-drift.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/adhamsedik/Library/Logs/core-infra-drift.log</string>
+</dict>
+</plist>

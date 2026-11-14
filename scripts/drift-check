@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Checks that the homelab still matches this repo, and changes nothing:
+# terraform plan, then every playbook with --check. Says what drifted.
+#
+#   scripts/drift-check
+#
+# Exits 0 when nothing drifted, 1 when something did or a check failed.
+# Runs weekly on the Mac (scripts/drift-check.plist), because the Terraform
+# state lives there and CI isn't allowed to reach joseph.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+drifted=()
+
+echo "== $(date '+%F %R') terraform plan"
+terraform -chdir=terraform plan -detailed-exitcode -input=false -no-color
+case $? in
+  0) ;;
+  2) drifted+=("terraform") ;;
+  *) drifted+=("terraform (failed)") ;;
+esac
+
+for playbook in proxmox-host pihole runner hermit; do
+  echo "== ansible $playbook"
+  output="$(cd ansible && ansible-playbook "playbooks/$playbook.yml" --check --diff 2>&1)"
+  status=$?
+  echo "$output"
+  if [ $status -ne 0 ]; then
+    drifted+=("$playbook (failed)")
+  elif grep -qE "changed=[1-9]" <<<"$output"; then
+    drifted+=("$playbook")
+  fi
+done
+
+if [ ${#drifted[@]} -eq 0 ]; then
+  echo "No drift."
+  exit 0
+fi
+
+message="Drift: ${drifted[*]}"
+echo "$message"
+osascript -e "display notification \"$message. See ~/Library/Logs/core-infra-drift.log\" with title \"core-infra\"" || true
+exit 1
