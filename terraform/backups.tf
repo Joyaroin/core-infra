@@ -17,7 +17,7 @@ resource "proxmox_backup_job" "pihole_daily" {
   id             = "pihole-daily" # a name you choose; it becomes the job ID in Proxmox
   schedule       = "03:45"        # 15 minutes after forgejo's, so they don't overlap
   storage        = "local"
-  vmid           = ["202"] # heavens-door
+  vmid           = ["206"] # heavens-door
   mode           = "snapshot"
   compress       = "zstd"
   enabled        = true

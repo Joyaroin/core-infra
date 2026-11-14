@@ -26,6 +26,7 @@
       - VM.Config.Memory
       - VM.Config.Network
       - VM.Config.Options
+      - VM.GuestAgent.Audit # lets Terraform read IPs from the guest agent
       - VM.Migrate
       - VM.PowerMgmt
     local_storage_content:
