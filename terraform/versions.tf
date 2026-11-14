@@ -8,5 +8,9 @@ terraform {
       source  = "bpg/proxmox" # registry.terraform.io/bpg/proxmox
       version = "~> 0.122.0"  # allows 0.122.x only
     }
+    tailscale = {
+      source  = "tailscale/tailscale"
+      version = "~> 0.29.0"
+    }
   }
 }

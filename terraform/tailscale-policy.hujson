@@ -1,0 +1,52 @@
+{
+	"tagOwners": {
+		"tag:k8s-operator": [],
+		"tag:k8s":          ["tag:k8s-operator"],
+		"tag:ci":           ["autogroup:admin"],
+		"tag:worker":       ["autogroup:admin"],
+	},
+
+	"hosts": {
+		"git": "100.95.34.20",
+	},
+
+	"grants": [
+		// Your devices and the Kubernetes devices keep full access.
+		{
+			"src": ["autogroup:member", "tag:k8s", "tag:k8s-operator"],
+			"dst": ["*"],
+			"ip":  ["*"],
+		},
+
+		// CI and agent workers can only reach Forgejo over HTTPS.
+		{
+			"src": ["tag:ci", "tag:worker"],
+			"dst": ["git"],
+			"ip":  ["tcp:443"],
+		},
+	],
+
+	// Allow all users to SSH into their own devices in check mode.
+	"ssh": [
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+
+	// Refuses to save if CI or workers could reach the Proxmox UI, hermit or hamon.
+	"tests": [
+		{
+			"src":    "tag:ci",
+			"accept": ["git:443"],
+			"deny":   ["100.73.210.105:8006", "100.80.32.26:22", "100.96.209.92:22"],
+		},
+		{
+			"src":    "tag:worker",
+			"accept": ["git:443"],
+			"deny":   ["100.73.210.105:8006", "100.80.32.26:22", "100.96.209.92:22"],
+		},
+	],
+}

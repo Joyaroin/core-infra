@@ -37,3 +37,12 @@ variable "gateway" {
   description = "Default gateway (your router), e.g. 192.168.1.1"
   type        = string
 }
+
+variable "tailscale_oauth_client_id" {
+  type = string
+}
+
+variable "tailscale_oauth_client_secret" {
+  type      = string
+  sensitive = true
+}

@@ -16,6 +16,7 @@ the gitops repo, `Joyaroin/morioh-cho-gitops` on GitHub.
 | Pi-hole web password | Yours to keep. A rebuild can also just use a new one |
 | Forgejo registry token (for hermit) | Bitwarden. hermit needs it to pull lab images before Vault exists, so it can't live in Vault |
 | Tailscale auth keys | Make a new one-off key each time: admin console → Settings → Keys |
+| Tailscale OAuth client (for Terraform) | Bitwarden, and `terraform/terraform.tfvars` |
 
 ## 1. Proxmox host (manual)
 
@@ -84,7 +85,9 @@ playbook should report `changed=0`.
 
 ## 5. Tailscale admin console (manual)
 
-- **DNS → Nameservers:** heavens-door's Tailscale IP.
+- **DNS:** Terraform sets it (`terraform/tailscale.tf`). If heavens-door came
+  back with a new Tailscale IP, put the new IP there and `terraform apply`.
+  The access rules are in `terraform/tailscale-policy.hujson`.
 - **hermit's machine page → Edit IP:** set it back to `100.80.32.26`. The k3s
   certificate and the kubeconfig name that IP.
 - Remove the dead machines, and rename any new one that came back with a `-1`
