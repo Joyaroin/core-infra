@@ -1,0 +1,172 @@
+# Sets up hermit as the k3s server. Argo CD and everything on the cluster come
+# from the gitops repo afterwards: bootstrap/install, then bootstrap/vault-unseal
+# (same disk) or the R2 restore in bootstrap/vault-restore-drill (new disk).
+# A fresh VM needs a Tailscale auth key and the Forgejo registry password:
+#   ansible-playbook playbooks/hermit.yml -e tailscale_authkey=tskey-... -e registry_password=...
+- name: k3s server
+  hosts: k3s
+  become: true
+
+  vars:
+    k3s_version: "v1.36.4+k3s1"
+
+  tasks:
+    - name: Install the guest agent and firewall
+      ansible.builtin.apt:
+        name:
+          - qemu-guest-agent
+          - ufw
+        update_cache: true
+
+    - name: Start the guest agent
+      ansible.builtin.service:
+        name: qemu-guest-agent
+        state: started
+
+    # Left on, cloud-init treats any change to Proxmox's cloud-init drive as a
+    # new machine and regenerates the SSH host keys.
+    - name: Turn cloud-init off after the first boot
+      ansible.builtin.copy:
+        dest: /etc/cloud/cloud-init.disabled
+        content: ""
+        force: false
+        mode: "0644"
+
+    # A reboot seals Vault, so reboots are done by hand, followed by an unseal.
+    - name: Never reboot for updates on its own
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/52homelab-no-reboot
+        content: |
+          Unattended-Upgrade::Automatic-Reboot "false";
+        mode: "0644"
+
+    - name: Install Tailscale
+      ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
+      args:
+        creates: /usr/bin/tailscale
+
+    - name: Check whether Tailscale is logged in
+      ansible.builtin.command: tailscale status
+      register: tailscale_status
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Join the tailnet
+      ansible.builtin.command: tailscale up --authkey={{ tailscale_authkey }} --hostname=hermit --accept-dns=false
+      when: tailscale_status.rc != 0
+      no_log: true
+
+    # Without Tailscale DNS, point the git hostname (also the image registry) at forgejo.
+    - name: Make git.tailf69bc5.ts.net resolve
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "100.95.34.20 git.tailf69bc5.ts.net"
+
+    # The API is reachable over the tailnet only. SSH from the LAN too, so a
+    # broken Tailscale doesn't lock you out. Pods need the node's address.
+    - name: Firewall defaults
+      community.general.ufw:
+        default: "{{ item.policy }}"
+        direction: "{{ item.direction }}"
+      loop:
+        - { direction: incoming, policy: deny }
+        - { direction: outgoing, policy: allow }
+
+    - name: Firewall rules
+      community.general.ufw:
+        rule: allow
+        interface_in: "{{ item.interface | default(omit) }}"
+        from_ip: "{{ item.from | default('any') }}"
+        port: "{{ item.port | default(omit) }}"
+        proto: "{{ item.proto | default('any') }}"
+        comment: "{{ item.comment }}"
+      loop:
+        - { from: 192.168.2.0/24, port: "22", proto: tcp, comment: SSH from the home LAN }
+        - { interface: tailscale0, port: "22", proto: tcp, comment: SSH over Tailscale }
+        - { interface: tailscale0, port: "6443", proto: tcp, comment: k3s API over Tailscale }
+        - { from: 10.42.0.0/16, comment: k3s pods }
+        - { from: 10.43.0.0/16, comment: k3s services }
+
+    - name: Turn the firewall on
+      community.general.ufw:
+        state: enabled
+
+    # Vault's PersistentVolume in the gitops repo points here.
+    - name: Create Vault's data directory
+      ansible.builtin.file:
+        path: /mnt/vault-data/raft
+        state: directory
+
+    - name: Create /etc/rancher/k3s
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        state: directory
+        mode: "0755"
+
+    # k3s only reads this when it installs, so it is written once (force: false).
+    # The running hermit's copy differs: it joined an older cluster (hamon).
+    - name: Write the k3s config
+      ansible.builtin.copy:
+        dest: /etc/rancher/k3s/config.yaml
+        force: false
+        mode: "0600"
+        content: |
+          node-name: hermit
+          cluster-init: true # embedded etcd, so another server can join later
+          disable:
+            - traefik # installed and owned by Argo CD
+          secrets-encryption: true # Secrets copied out of Vault aren't plaintext on disk
+          write-kubeconfig-mode: "0600"
+          tls-san:
+            - hermit
+            - hermit.tailf69bc5.ts.net
+            - 100.80.32.26 # hermit's Tailscale IP; set it again after a rebuild
+
+    - name: Check whether the registry login exists
+      ansible.builtin.stat:
+        path: /etc/rancher/k3s/registries.yaml
+      register: registries
+
+    # Lets k3s pull the lab images from forgejo's registry.
+    - name: Write the registry login
+      ansible.builtin.copy:
+        dest: /etc/rancher/k3s/registries.yaml
+        mode: "0600"
+        content: |
+          configs:
+            "git.tailf69bc5.ts.net":
+              auth:
+                username: adham
+                password: "{{ registry_password }}"
+      when: not registries.stat.exists
+      no_log: true
+
+    - name: Install k3s
+      ansible.builtin.shell: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Create adham's .kube directory
+      ansible.builtin.file:
+        path: /home/adham/.kube
+        state: directory
+        owner: adham
+        group: adham
+        mode: "0700"
+
+    # So the kubeconfig can be fetched to the Mac without sudo.
+    - name: Copy the admin kubeconfig for adham
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /home/adham/.kube/config
+        remote_src: true
+        owner: adham
+        group: adham
+        mode: "0600"
+
+    - name: Point kubectl at it
+      ansible.builtin.lineinfile:
+        path: /home/adham/.bashrc
+        regexp: "^export KUBECONFIG="
+        line: "export KUBECONFIG=$HOME/.kube/config"

@@ -1,4 +1,6 @@
-# k3s node running staging and production. App data lives in cloud Postgres.
+# k3s node running staging and production. App data lives in cloud Postgres,
+# but Vault keeps every secret on this disk (snapshotted nightly to R2).
+# Rebuild: ansible/playbooks/hermit.yml, then the gitops repo's bootstrap/.
 resource "proxmox_virtual_environment_vm" "hermit" {
   name          = "hermit"
   node_name     = var.proxmox_node
@@ -21,6 +23,7 @@ resource "proxmox_virtual_environment_vm" "hermit" {
   disk {
     datastore_id = var.vm_datastore
     interface    = "scsi0"
+    import_from  = proxmox_download_file.ubuntu_2604.id # only used when the VM is created
     size         = 80
     discard      = "on"
     iothread     = true
@@ -62,6 +65,9 @@ resource "proxmox_virtual_environment_vm" "hermit" {
 
   lifecycle {
     prevent_destroy = true
+    # The running VM was installed before this line existed, and changing the
+    # source image would replace the VM. So it only applies to a fresh build.
+    ignore_changes = [disk[0].import_from]
   }
 }
 

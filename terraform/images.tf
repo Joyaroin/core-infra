@@ -12,3 +12,13 @@ resource "proxmox_download_file" "ubuntu_2404" {
   # Update the image on purpose, not by surprise.
   overwrite = false
 }
+
+# Ubuntu 26.04, for hermit.
+resource "proxmox_download_file" "ubuntu_2604" {
+  node_name    = var.proxmox_node
+  datastore_id = var.image_datastore
+  content_type = "import"
+  url          = "https://cloud-images.ubuntu.com/resolute/current/resolute-server-cloudimg-amd64.img"
+  file_name    = "resolute-server-cloudimg-amd64.qcow2"
+  overwrite    = false
+}
