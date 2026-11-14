@@ -1,0 +1,92 @@
+# Sets up heavens-door as the home network's Pi-hole.
+# Run with a Tailscale auth key and a web password the first time:
+#   ansible-playbook playbooks/pihole.yml -e tailscale_authkey=tskey-... -e pihole_password=...
+
+# Only root@pam may pass devices into a container, so Terraform can't do this.
+- name: Give heavens-door /dev/net/tun (Tailscale needs it)
+  hosts: proxmox
+  vars:
+    vm_id: "{{ hostvars['heavens-door'].vm_id }}"
+
+  tasks:
+    - name: Read the container config
+      ansible.builtin.command: pct config {{ vm_id }}
+      register: ct_config
+      changed_when: false
+      check_mode: false
+
+    - name: Pass /dev/net/tun through
+      ansible.builtin.command: pct set {{ vm_id }} --dev0 /dev/net/tun
+      when: "'/dev/net/tun' not in ct_config.stdout"
+      register: tun_added
+
+    - name: Reboot the container so it sees the device
+      ansible.builtin.command: pct reboot {{ vm_id }}
+      when: tun_added is changed
+
+- name: Pi-hole
+  hosts: dns
+  gather_facts: false # wait_for_connection below must run first
+
+  tasks:
+    - name: Wait for the container to be reachable
+      ansible.builtin.wait_for_connection:
+        timeout: 60
+
+    - name: Install curl
+      ansible.builtin.apt:
+        name: curl
+        update_cache: true
+
+    - name: Install Tailscale
+      ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
+      args:
+        creates: /usr/bin/tailscale
+
+    - name: Check whether Tailscale is logged in
+      ansible.builtin.command: tailscale status
+      register: tailscale_status
+      changed_when: false
+      failed_when: false
+
+    - name: Join the tailnet
+      # accept-dns=false: this is the tailnet's DNS server, so it shouldn't ask itself.
+      ansible.builtin.command: tailscale up --authkey={{ tailscale_authkey }} --hostname=heavens-door --accept-dns=false
+      when: tailscale_status.rc != 0
+      no_log: true
+
+    - name: Create /etc/pihole
+      ansible.builtin.file:
+        path: /etc/pihole
+        state: directory
+        mode: "0755"
+
+    # If this file exists before the installer runs, the installer asks no
+    # questions and adds StevenBlack's blocklist. Pi-hole rewrites the file
+    # itself afterwards, so it is only written once (force: false).
+    - name: Seed the Pi-hole settings
+      ansible.builtin.copy:
+        dest: /etc/pihole/pihole.toml
+        force: false
+        mode: "0644"
+        content: |
+          [dns]
+          upstreams = ["1.1.1.1", "1.0.0.1"]
+          listeningMode = "ALL" # answer queries from the LAN and the tailnet
+
+    - name: Install Pi-hole
+      ansible.builtin.shell: curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended
+      args:
+        creates: /usr/local/bin/pihole
+
+    - name: Check whether the web password is set
+      ansible.builtin.command: pihole-FTL --config webserver.api.pwhash
+      register: pwhash
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Set the web password
+      ansible.builtin.command: pihole setpassword {{ pihole_password }}
+      when: pwhash.stdout == ""
+      no_log: true

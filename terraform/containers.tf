@@ -1,5 +1,5 @@
-# Pi-hole: DNS for the home network. Imported from the existing container.
-resource "proxmox_virtual_environment_container" "heavens_door" {
+# The old, hand-built Pi-hole. Delete once heavens_door below has taken over.
+resource "proxmox_virtual_environment_container" "heavens_door_old" {
   node_name     = var.proxmox_node
   start_on_boot = true
   unprivileged  = true
@@ -58,6 +58,64 @@ resource "proxmox_virtual_environment_container" "heavens_door" {
       timeout_start,
       operating_system[0].template_file_id,
     ]
+  }
+}
+
+# Pi-hole: DNS for the home network. Built from scratch;
+# ansible/playbooks/pihole.yml installs everything inside.
+resource "proxmox_virtual_environment_container" "heavens_door" {
+  node_name     = var.proxmox_node
+  vm_id         = 206
+  start_on_boot = true
+  unprivileged  = true
+
+  memory {
+    dedicated = 512
+    swap      = 256
+  }
+
+  disk {
+    datastore_id = var.vm_datastore
+    size         = 8
+  }
+
+  features {
+    nesting = true
+  }
+
+  initialization {
+    hostname = "heavens-door"
+
+    dns {
+      servers = [var.gateway]
+    }
+
+    ip_config {
+      ipv4 {
+        address = "192.168.2.16/24"
+        gateway = var.gateway
+      }
+    }
+
+    user_account {
+      keys = [trimspace(file(pathexpand(var.ssh_public_key_path)))] # for root
+    }
+  }
+
+  network_interface {
+    name   = "eth0"
+    bridge = "vmbr0"
+  }
+
+  operating_system {
+    template_file_id = "local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst"
+    type             = "debian"
+  }
+
+  lifecycle {
+    # Tailscale needs /dev/net/tun, but only root@pam may pass devices through,
+    # so the playbook adds it from joseph. Don't let Terraform remove it.
+    ignore_changes = [device_passthrough]
   }
 }
 
