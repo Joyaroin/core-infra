@@ -14,7 +14,7 @@ the gitops repo, `Joyaroin/morioh-cho-gitops` on GitHub.
 | Proxmox API token | `terraform/terraform.tfvars`, on the Mac only |
 | Vault unseal key and root token | Bitwarden |
 | Pi-hole web password | Yours to keep. A rebuild can also just use a new one |
-| Forgejo registry password (for hermit) | In hermit's `/etc/rancher/k3s/registries.yaml` today. Keep a copy, or make a new Forgejo token |
+| Forgejo registry token (for hermit) | Bitwarden. hermit needs it to pull lab images before Vault exists, so it can't live in Vault |
 | Tailscale auth keys | Make a new one-off key each time: admin console → Settings → Keys |
 
 ## 1. Proxmox host (manual)
