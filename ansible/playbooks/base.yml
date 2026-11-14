@@ -1,0 +1,30 @@
+- name: Base setup for Ubuntu VMs
+  hosts: test          # which group from the inventory to run on
+  become: true         # run tasks with sudo (the cloud-init user has passwordless sudo)
+
+  tasks:
+    - name: Update package lists and apply safe upgrades
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600   # skip "apt update" if it ran in the last hour
+        upgrade: safe            # like "apt upgrade": never removes packages
+
+    - name: Install common tools
+      ansible.builtin.apt:
+        name:
+          - htop
+          - curl
+          - vim
+        state: present           # "make sure these are installed", not "install them"
+
+    - name: Set the timezone
+      community.general.timezone:
+        name: Etc/UTC            # change to yours, e.g. Europe/London
+
+    - name: Write a login message
+      ansible.builtin.copy:
+        dest: /etc/motd
+        content: |
+          This machine is managed by Ansible (core-infra).
+          Manual changes will be overwritten.
+        mode: "0644"
