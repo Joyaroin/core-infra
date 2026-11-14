@@ -29,3 +29,6 @@ terraform.rc
 
 # Ignore plan files (they contain sensitive resource values in plain text)
 *.tfplan
+
+# R2 access key for the Terraform state
+backend.credentials.hcl

@@ -17,6 +17,7 @@ the gitops repo, `Joyaroin/morioh-cho-gitops` on GitHub.
 | Forgejo registry token (for hermit) | Bitwarden. hermit needs it to pull lab images before Vault exists, so it can't live in Vault |
 | Tailscale auth keys | Make a new one-off key each time: admin console → Settings → Keys |
 | Tailscale OAuth client (for Terraform) | Bitwarden, and `terraform/terraform.tfvars` |
+| R2 key for the Terraform state | Bitwarden (`mediasafe/r2-terraform-state`), and `terraform/backend.credentials.hcl` |
 
 ## 1. Proxmox host (manual)
 
@@ -57,11 +58,22 @@ survived. Until there's a NAS, losing the disk means losing Forgejo.
 
 ## 3. Terraform
 
+The state is in R2, not on the Mac, so a new machine picks up where the old
+one left off. Put the R2 key in `terraform/backend.credentials.hcl`:
+
+```hcl
+access_key = "<username of mediasafe/r2-terraform-state>"
+secret_key = "<password of mediasafe/r2-terraform-state>"
+```
+
 ```sh
 cd terraform
-terraform init
+terraform init -backend-config=backend.credentials.hcl
 terraform apply
 ```
+
+R2 keeps no old versions of the state. After an apply that matters, keep a
+copy: `terraform state pull > ~/core-infra-tfstate-$(date +%F).json`.
 
 This downloads the Ubuntu images and creates heavens-door, echoes and
 hermit. It also sets up the backup jobs.
