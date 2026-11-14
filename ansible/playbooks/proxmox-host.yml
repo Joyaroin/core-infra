@@ -155,6 +155,44 @@
       no_log: true
       notify: Build the Gmail login map
 
+    # Without a subscription, Proxmox's default ("auto") never sends the
+    # "updates available" email. "always" sends it whenever new updates appear.
+    - name: Read the datacenter options
+      ansible.builtin.command: pvesh get /cluster/options --output-format json
+      register: dc_options
+      changed_when: false
+      check_mode: false
+
+    - name: Always email about available updates
+      ansible.builtin.command: pvesh set /cluster/options --notify package-updates=always
+      when: "(dc_options.stdout | from_json).notify | default({}) != {'package-updates': 'always'}"
+
+    # The "updates available" email ends with the steps to take. Proxmox reads
+    # overrides of its email templates from here (no mode: /etc/pve sets its own).
+    - name: Create the notification template folder
+      ansible.builtin.file:
+        path: /etc/pve/notification-templates/default
+        state: directory
+
+    # Ansible can't create files in /etc/pve (it refuses the permission change
+    # that comes with a new file), but it can fill in existing ones.
+    - name: Create the template files empty
+      ansible.builtin.command: touch /etc/pve/notification-templates/default/{{ item }}
+      args:
+        creates: /etc/pve/notification-templates/default/{{ item }}
+      loop:
+        - package-updates-body.txt.hbs
+        - package-updates-body.html.hbs
+
+    - name: Add the update steps to the update email
+      ansible.builtin.copy:
+        src: notification-templates/{{ item }}
+        dest: /etc/pve/notification-templates/default/{{ item }}
+        unsafe_writes: true # /etc/pve refuses the temp file swap copy normally does
+      loop:
+        - package-updates-body.txt.hbs
+        - package-updates-body.html.hbs
+
   handlers:
     - name: Build the Gmail login map
       ansible.builtin.command: postmap /etc/postfix/sasl_passwd

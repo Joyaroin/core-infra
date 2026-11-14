@@ -1,0 +1,27 @@
+The following updates are available:
+
+{{table available-updates}}
+
+What to do
+----------
+1. Update joseph. From the Mac:
+
+     ssh root@joseph.tailf69bc5.ts.net
+     apt update && apt dist-upgrade
+
+2. If the list above has a proxmox-kernel package, reboot so the new
+   kernel is used. Every guest restarts with it:
+
+     reboot
+
+   Give hermit a few minutes to come back up.
+
+3. After a reboot, unseal Vault. From the Mac:
+
+     cd ~/mediasafe-gitops
+     export BW_SESSION="$(bw unlock --raw)"
+     export KUBECONFIG=~/.kube/homelab.yaml
+     bootstrap/vault-unseal
+
+   It prints "Unsealed." when done. If it says it could not read Vault's
+   status, Vault isn't up yet: wait a minute and run the last line again.

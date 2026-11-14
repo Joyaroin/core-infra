@@ -1,0 +1,37 @@
+<html>
+    <body>
+        The following updates are available:
+        <table style="border: 1px solid;border-collapse=collapse;margin-top: 5px;">
+            <tr>
+                <th style="border: 1px solid;border-collapse=collapse;">Package Name</th>
+                <th style="border: 1px solid;border-collapse=collapse;">Installed Version</th>
+                <th style="border: 1px solid;border-collapse=collapse;">Available Version</th>
+            </tr>
+        {{#each available-updates.data}}
+            <tr>
+                <td style="border: 1px solid;border-collapse=collapse;">{{this.package-name}}</td>
+                <td style="border: 1px solid;border-collapse=collapse;">{{this.installed-version}}</td>
+                <td style="border: 1px solid;border-collapse=collapse;">{{this.available-version}}</td>
+            </tr>
+        {{/each}}
+        </table>
+
+        <h3>What to do</h3>
+        <ol>
+            <li>Update joseph. From the Mac:
+<pre>ssh root@joseph.tailf69bc5.ts.net
+apt update &amp;&amp; apt dist-upgrade</pre></li>
+            <li>If the list above has a <code>proxmox-kernel</code> package, reboot so the new
+                kernel is used. Every guest restarts with it:
+<pre>reboot</pre>
+                Give hermit a few minutes to come back up.</li>
+            <li>After a reboot, unseal Vault. From the Mac:
+<pre>cd ~/mediasafe-gitops
+export BW_SESSION="$(bw unlock --raw)"
+export KUBECONFIG=~/.kube/homelab.yaml
+bootstrap/vault-unseal</pre>
+                It prints "Unsealed." when done. If it says it could not read Vault's status,
+                Vault isn't up yet: wait a minute and run the last line again.</li>
+        </ol>
+    </body>
+</html>
