@@ -8,4 +8,7 @@ resource "proxmox_download_file" "ubuntu_2404" {
   # The file is really qcow2 despite the .img name. Proxmox decides the
   # format from the extension, so we rename it.
   file_name = "noble-server-cloudimg-amd64.qcow2"
+  # Don't re-download when Ubuntu publishes a new "current" image.
+  # Update the image on purpose, not by surprise.
+  overwrite = false
 }

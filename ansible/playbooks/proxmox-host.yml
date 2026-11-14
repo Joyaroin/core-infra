@@ -1,0 +1,81 @@
+- name: Proxmox host setup
+  hosts: proxmox
+
+  vars:
+    terraform_role: TerraformProv
+    terraform_user: terraform@pve
+    terraform_privs:
+      - Datastore.Allocate
+      - Datastore.AllocateSpace
+      - Datastore.AllocateTemplate
+      - Datastore.Audit
+      - Pool.Allocate
+      - Pool.Audit
+      - SDN.Use
+      - Sys.Audit
+      - Sys.Console
+      - Sys.Modify
+      - VM.Allocate
+      - VM.Audit
+      - VM.Clone
+      - VM.Config.CDROM
+      - VM.Config.CPU
+      - VM.Config.Cloudinit
+      - VM.Config.Disk
+      - VM.Config.HWType
+      - VM.Config.Memory
+      - VM.Config.Network
+      - VM.Config.Options
+      - VM.Migrate
+      - VM.PowerMgmt
+    local_storage_content:
+      - backup
+      - import
+      - iso
+      - vztmpl
+
+  tasks:
+    - name: Read current roles, users, permissions and storage
+      ansible.builtin.command: "pvesh get {{ item }} --output-format json"
+      loop:
+        - /access/roles
+        - /access/users
+        - /access/acl
+        - /storage/local
+      register: pve_reads
+      changed_when: false
+      check_mode: false
+
+    - name: Turn the raw output into variables
+      ansible.builtin.set_fact:
+        local_disabled: "{{ (pve_reads.results[3].stdout | from_json).disable | default(0) | int == 1 }}"
+        current_role: "{{ pve_reads.results[0].stdout | from_json | selectattr('roleid', 'equalto', terraform_role) | first | default(None) }}"
+        user_exists: "{{ pve_reads.results[1].stdout | from_json | selectattr('userid', 'equalto', terraform_user) | list | length > 0 }}"
+        acl_exists: "{{ pve_reads.results[2].stdout | from_json | selectattr('ugid', 'equalto', terraform_user) | selectattr('path', 'equalto', '/') | selectattr('roleid', 'equalto', terraform_role) | list | length > 0 }}"
+        current_content: "{{ (pve_reads.results[3].stdout | from_json).content.split(',') }}"
+
+    - name: Create the Terraform role
+      ansible.builtin.command: pveum role add {{ terraform_role }} -privs "{{ terraform_privs | join(' ') }}"
+      when: current_role is none
+
+    - name: Fix the Terraform role's privileges if they differ
+      ansible.builtin.command: pveum role modify {{ terraform_role }} -privs "{{ terraform_privs | join(' ') }}"
+      when:
+        - current_role is not none
+        - current_role.privs.split(',') | symmetric_difference(terraform_privs) | length > 0
+
+    - name: Create the Terraform user
+      ansible.builtin.command: pveum user add {{ terraform_user }}
+      when: not user_exists
+
+    - name: Give the Terraform user its role on everything
+      ansible.builtin.command: pveum aclmod / -user {{ terraform_user }} -role {{ terraform_role }}
+      when: not acl_exists
+
+    - name: Allow import images on the local storage
+      ansible.builtin.command: pvesm set local --content {{ local_storage_content | join(',') }}
+      when: current_content | symmetric_difference(local_storage_content) | length > 0
+
+    - name: Make sure the local storage is enabled
+      ansible.builtin.command: pvesm set local --disable 0
+      when: local_disabled

@@ -33,11 +33,6 @@ variable "ssh_public_key_path" {
   default     = "~/.ssh/id_ed25519.pub"
 }
 
-variable "test_vm_ip" {
-  description = "Static IP for the test VM in CIDR form, e.g. 192.168.1.50/24"
-  type        = string
-}
-
 variable "gateway" {
   description = "Default gateway (your router), e.g. 192.168.1.1"
   type        = string

@@ -6,6 +6,4 @@ output "node_names" {
   value = data.proxmox_virtual_environment_nodes.all.names
 }
 
-output "test_vm_ip" {
-  value = proxmox_virtual_environment_vm.test.initialization[0].ip_config[0].ipv4[0].address
-}
+
