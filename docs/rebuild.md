@@ -17,6 +17,7 @@ the gitops repo, `Joyaroin/morioh-cho-gitops` on GitHub.
 | Forgejo registry token (for hermit) | Bitwarden. hermit needs it to pull lab images before Vault exists, so it can't live in Vault |
 | Tailscale auth keys | Make a new one-off key each time: admin console → Settings → Keys |
 | Tailscale OAuth client (for Terraform) | Bitwarden, and `terraform/terraform.tfvars` |
+| Gmail app password (joseph's notifications) | Bitwarden. Pass it to `proxmox-host.yml` once, without spaces: `-e gmail_app_password=...` |
 | R2 key for the Terraform state | Bitwarden (`mediasafe/r2-terraform-state`), and `terraform/backend.credentials.hcl` |
 
 ## 1. Proxmox host (manual)
@@ -28,7 +29,7 @@ the gitops repo, `Joyaroin/morioh-cho-gitops` on GitHub.
 
    ```sh
    cd ansible
-   ansible-playbook playbooks/proxmox-host.yml
+   ansible-playbook playbooks/proxmox-host.yml -e gmail_app_password=...
    ```
 
 5. Create the API token by hand. The playbook doesn't create it, so the

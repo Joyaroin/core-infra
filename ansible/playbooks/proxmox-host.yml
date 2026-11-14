@@ -34,6 +34,14 @@
       - import
       - iso
       - vztmpl
+    postfix_relay:
+      relayhost: "[smtp.gmail.com]:465"
+      smtp_tls_wrappermode: "yes" # port 465 is TLS from the first byte
+      smtp_tls_security_level: encrypt
+      smtp_sasl_auth_enable: "yes"
+      smtp_sasl_password_maps: hash:/etc/postfix/sasl_passwd
+      smtp_sasl_security_options: noanonymous
+      inet_protocols: ipv4 # joseph has no IPv6 route
 
   tasks:
     - name: Read current roles, users, permissions and storage
@@ -108,3 +116,50 @@
           Unattended-Upgrade::Origins-Pattern {
             "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
           };
+
+    # Notifications (backup results, available updates) are emailed to
+    # root@pam's address. The home connection blocks sending mail directly
+    # (port 25), so postfix relays it through Gmail on port 465 with an app
+    # password. (Proxmox's own SMTP target fails against Gmail on 9.2.)
+    # The first run needs the app password, typed without its spaces
+    # (Ansible cuts -e values at a space): -e gmail_app_password=abcdefghijklmnop
+    - name: Install SASL support for postfix
+      ansible.builtin.apt:
+        name: libsasl2-modules
+
+    - name: Relay mail through Gmail
+      ansible.builtin.lineinfile:
+        path: /etc/postfix/main.cf
+        regexp: "^{{ item.key }}\\s*="
+        line: "{{ item.key }} = {{ item.value }}"
+      loop: "{{ postfix_relay | dict2items }}"
+      notify: Restart postfix
+
+    - name: Read root@pam's email
+      ansible.builtin.command: pvesh get /access/users/root@pam --output-format json
+      register: root_user
+      changed_when: false
+      check_mode: false
+
+    - name: Check whether the Gmail login exists
+      ansible.builtin.stat:
+        path: /etc/postfix/sasl_passwd
+      register: sasl_passwd
+
+    - name: Write the Gmail login
+      ansible.builtin.copy:
+        dest: /etc/postfix/sasl_passwd
+        mode: "0600"
+        content: "[smtp.gmail.com]:465 {{ (root_user.stdout | from_json).email }}:{{ gmail_app_password | replace(' ', '') }}\n"
+      when: not sasl_passwd.stat.exists
+      no_log: true
+      notify: Build the Gmail login map
+
+  handlers:
+    - name: Build the Gmail login map
+      ansible.builtin.command: postmap /etc/postfix/sasl_passwd
+
+    - name: Restart postfix
+      ansible.builtin.service:
+        name: postfix
+        state: restarted
