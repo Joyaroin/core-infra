@@ -80,3 +80,31 @@
     - name: Make sure the local storage is enabled
       ansible.builtin.command: pvesm set local --disable 0
       when: local_disabled
+
+    # Debian security fixes install themselves daily. Proxmox's own packages
+    # (including the kernel) are left for a deliberate `apt dist-upgrade`, and
+    # nothing reboots on its own: a reboot restarts every guest and seals Vault.
+    - name: Install unattended-upgrades
+      ansible.builtin.apt:
+        name: unattended-upgrades
+
+    - name: Install security updates daily, never reboot
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          Unattended-Upgrade::Automatic-Reboot "false";
+
+    # Debian's default also takes stable point releases. Narrow it to security
+    # fixes. Named 52 so it's read after Debian's 50unattended-upgrades.
+    - name: Only take Debian security fixes
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/52security-only
+        mode: "0644"
+        content: |
+          #clear Unattended-Upgrade::Origins-Pattern;
+          Unattended-Upgrade::Origins-Pattern {
+            "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+          };
