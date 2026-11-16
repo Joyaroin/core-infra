@@ -36,17 +36,17 @@
 		},
 	],
 
-	// Refuses to save if CI or workers could reach the Proxmox UI, hermit or hamon.
+	// Refuses to save if CI or workers could reach either Proxmox UI, hermit or hamon.
 	"tests": [
 		{
 			"src":    "tag:ci",
 			"accept": ["git:443"],
-			"deny":   ["100.73.210.105:8006", "100.80.32.26:22", "100.96.209.92:22"],
+			"deny":   ["100.73.210.105:8006", "100.109.111.6:8006", "100.80.32.26:22", "100.96.209.92:22"],
 		},
 		{
 			"src":    "tag:worker",
 			"accept": ["git:443"],
-			"deny":   ["100.73.210.105:8006", "100.80.32.26:22", "100.96.209.92:22"],
+			"deny":   ["100.73.210.105:8006", "100.109.111.6:8006", "100.80.32.26:22", "100.96.209.92:22"],
 		},
 	],
 }

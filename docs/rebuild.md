@@ -3,7 +3,7 @@
 The order to bring everything back, and the steps that are still manual.
 Each step assumes the ones above it are done.
 
-**Two repos.** This one owns joseph, its guests and everything inside them
+**Two repos.** This one owns the two Proxmox hosts, joseph and jotaro, their guests and everything inside them
 up to Kubernetes. The cluster's contents (Argo CD, Vault, the apps) live in
 the gitops repo, `Joyaroin/morioh-cho-gitops` on GitHub.
 
@@ -11,18 +11,21 @@ the gitops repo, `Joyaroin/morioh-cho-gitops` on GitHub.
 
 | Secret | Where |
 |---|---|
-| Proxmox API token | `terraform/terraform.tfvars`, on the Mac only |
+| Proxmox API tokens (one per host) | `terraform/terraform.tfvars`, on the Mac only |
 | Vault unseal key and root token | Bitwarden |
 | Pi-hole web password | Yours to keep. A rebuild can also just use a new one |
 | Forgejo registry token (for hermit) | Bitwarden. hermit needs it to pull lab images before Vault exists, so it can't live in Vault |
 | Tailscale auth keys | Make a new one-off key each time: admin console → Settings → Keys |
 | Tailscale OAuth client (for Terraform) | Bitwarden, and `terraform/terraform.tfvars` |
-| Gmail app password (joseph's notifications) | Bitwarden. Pass it to `proxmox-host.yml` once, without spaces: `-e gmail_app_password=...` |
+| Gmail app password (the hosts' notifications) | Bitwarden. Pass it to `proxmox-host.yml` once, without spaces: `-e gmail_app_password=...` |
 | R2 key for the Terraform state | Bitwarden (`mediasafe/r2-terraform-state`), and `terraform/backend.credentials.hcl` |
 
-## 1. Proxmox host (manual)
+## 1. Proxmox hosts (manual)
 
-1. Install Proxmox VE on joseph. Keep the default disk layout: `local` and `local-lvm`.
+joseph runs everything except the CI runner; jotaro runs echoes. They are
+separate hosts, not a Proxmox cluster. Do these steps on each one.
+
+1. Install Proxmox VE. Keep the default disk layout: `local` and `local-lvm`.
 2. Install Tailscale and run `tailscale up` (no extra flags).
 3. Add the Mac's SSH key to `/root/.ssh/authorized_keys`.
 4. Set up the host's storage, plus the Terraform role and user:
@@ -41,7 +44,8 @@ the gitops repo, `Joyaroin/morioh-cho-gitops` on GitHub.
 
    `--privsep 0` makes the token use the user's role. Put
    `terraform@pve!provider=<secret>` in `terraform/terraform.tfvars` (see
-   `terraform.tfvars.example`).
+   `terraform.tfvars.example`): joseph's as `proxmox_api_token`, jotaro's
+   as `proxmox_jotaro_api_token`.
 
 ## 2. Forgejo: restore, don't rebuild
 
@@ -76,8 +80,8 @@ terraform apply
 R2 keeps no old versions of the state. After an apply that matters, keep a
 copy: `terraform state pull > ~/core-infra-tfstate-$(date +%F).json`.
 
-This downloads the Ubuntu images and creates heavens-door, echoes and
-hermit. It also sets up the backup jobs.
+This downloads the Ubuntu images and creates heavens-door and hermit on
+joseph, and echoes on jotaro. It also sets up the backup jobs.
 
 ## 4. Inside the guests
 
@@ -91,7 +95,8 @@ ansible-playbook playbooks/hermit.yml -e tailscale_authkey=tskey-... -e registry
 
 The first run on a new host stops at SSH host key verification. Accept the
 key once:
-`ssh -o StrictHostKeyChecking=accept-new -J root@joseph.tailf69bc5.ts.net <user>@<ip>`.
+`ssh -o StrictHostKeyChecking=accept-new -J root@<host>.tailf69bc5.ts.net <user>@<ip>`,
+where `<host>` is the guest's Proxmox host (jotaro for echoes, joseph for the rest).
 
 After the first run, the extra `-e` values aren't needed. Re-running any
 playbook should report `changed=0`.

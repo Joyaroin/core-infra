@@ -73,9 +73,11 @@ resource "proxmox_virtual_environment_vm" "hermit" {
 
 # CI runner (Forgejo Actions). Disposable: rebuilt from code, not backed up.
 # Ansible installs the runner: ansible/playbooks/runner.yml
+# It has jotaro to itself, so CI jobs don't compete with hermit on joseph.
 resource "proxmox_virtual_environment_vm" "echoes" {
+  provider      = proxmox.jotaro
   name          = "echoes"
-  node_name     = var.proxmox_node
+  node_name     = "jotaro"
   vm_id         = 205
   scsi_hardware = "virtio-scsi-single"
 
@@ -88,17 +90,17 @@ resource "proxmox_virtual_environment_vm" "echoes" {
   }
 
   cpu {
-    cores = 12
+    cores = 6 # all of jotaro's (i5-8500T, no hyper-threading)
     type  = "host"
   }
 
   memory {
-    dedicated = 7168
+    dedicated = 9216 # leaves about 6 GB of jotaro's 15 for the host and later guests
   }
 
   disk {
     datastore_id = var.vm_datastore
-    import_from  = proxmox_download_file.ubuntu_2404.id
+    import_from  = proxmox_download_file.ubuntu_2404_jotaro.id
     interface    = "scsi0"
     size         = 60
     discard      = "on"

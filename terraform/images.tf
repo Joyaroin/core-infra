@@ -13,6 +13,17 @@ resource "proxmox_download_file" "ubuntu_2404" {
   overwrite = false
 }
 
+# The same image on jotaro, for echoes. Each host needs its own copy.
+resource "proxmox_download_file" "ubuntu_2404_jotaro" {
+  provider     = proxmox.jotaro
+  node_name    = "jotaro"
+  datastore_id = var.image_datastore
+  content_type = "import"
+  url          = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+  file_name    = "noble-server-cloudimg-amd64.qcow2"
+  overwrite    = false
+}
+
 # Ubuntu 26.04, for hermit.
 resource "proxmox_download_file" "ubuntu_2604" {
   node_name    = var.proxmox_node

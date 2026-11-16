@@ -9,6 +9,18 @@ variable "proxmox_api_token" {
   sensitive   = true
 }
 
+variable "proxmox_jotaro_endpoint" {
+  description = "jotaro's Proxmox API URL"
+  type        = string
+  default     = "https://192.168.2.10:8006/"
+}
+
+variable "proxmox_jotaro_api_token" {
+  description = "jotaro's API token, same form as proxmox_api_token"
+  type        = string
+  sensitive   = true
+}
+
 variable "proxmox_node" {
   description = "Which Proxmox node to create things on"
   type        = string
