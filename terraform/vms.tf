@@ -17,7 +17,7 @@ resource "proxmox_virtual_environment_vm" "hermit" {
   }
 
   memory {
-    dedicated = 6144
+    dedicated = 7168
   }
 
   disk {
