@@ -84,7 +84,7 @@
         content: |
           runner:
             file: .runner
-            capacity: 1
+            capacity: 3
             timeout: 3h
           container:
             # Job containers can't use Tailscale's DNS, so point them at forgejo directly.
