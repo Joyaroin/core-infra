@@ -10,13 +10,21 @@
     forgejo_url: https://git.tailf69bc5.ts.net
     runner_labels: "docker:docker://node:22-bookworm,ubuntu-latest:docker://node:22-bookworm"
     runner_home: /var/lib/forgejo-runner
+    # The firewall: the home network, and the few things on it the runner still needs.
+    home_lan: 192.168.2.0/24
+    home_router: 192.168.2.1   # also the runner's DNS server: cloud-init took it from the gateway
+    proxmox_host: 192.168.2.10 # jotaro. Ansible reaches echoes by jumping through it.
+    forgejo_lan: 192.168.2.14  # Tailscale's direct path to git runs over the LAN
+    tailscale_port: "41641"
+    docker_nets: 172.16.0.0/12 # Docker's own networks, where the job containers live
 
   tasks:
-    - name: Install the guest agent and Docker
+    - name: Install the guest agent, Docker and the firewall
       ansible.builtin.apt:
         name:
           - qemu-guest-agent
           - docker.io
+          - ufw
           - acl # lets Ansible run tasks as the forgejo-runner user
         update_cache: true
 
@@ -138,3 +146,75 @@
         state: started
         enabled: true
         daemon_reload: true
+
+    # The runner runs whatever a CI job says, so it is cut off from the home
+    # network in both directions. It keeps the internet, DNS on the router, and
+    # the tailnet, where the access rules let it reach only git on 443.
+    # If a rule ever locks Ansible out, switch the firewall off from jotaro:
+    #   qm guest exec 205 -- ufw disable
+    - name: Firewall defaults
+      community.general.ufw:
+        default: "{{ item.policy }}"
+        direction: "{{ item.direction }}"
+      loop:
+        - { direction: incoming, policy: deny }
+        - { direction: outgoing, policy: allow }
+
+    - name: Firewall rules, incoming
+      community.general.ufw:
+        rule: allow
+        from_ip: "{{ item.from }}"
+        port: "{{ item.port | default(omit) }}"
+        proto: "{{ item.proto | default('any') }}"
+        comment: "{{ item.comment }}"
+      loop:
+        - { from: "{{ proxmox_host }}", port: "22", proto: tcp, comment: SSH from jotaro (Ansible) }
+        # The runner's cache server listens on a new port at each start.
+        - { from: "{{ docker_nets }}", comment: Job containers to the cache server }
+
+    # Order matters: ufw takes the first rule that matches, so the two
+    # exceptions come before the rule that rejects the rest of the home network.
+    # A rule added after the reject does nothing; delete and re-add in order.
+    - name: Firewall rules, outgoing
+      community.general.ufw:
+        rule: "{{ item.rule }}"
+        direction: out
+        to_ip: "{{ item.to }}"
+        port: "{{ item.port | default(omit) }}"
+        proto: "{{ item.proto | default('any') }}"
+        comment: "{{ item.comment }}"
+      loop:
+        - { rule: allow, to: "{{ home_router }}", port: "53", proto: udp, comment: DNS on the router }
+        - { rule: allow, to: "{{ home_router }}", port: "53", proto: tcp, comment: DNS on the router }
+        # Only the encrypted tunnel. Without it every clone and image push is relayed over the internet.
+        - { rule: allow, to: "{{ forgejo_lan }}", port: "{{ tailscale_port }}", proto: udp, comment: Tailscale direct path to git }
+        - { rule: reject, to: "{{ home_lan }}", comment: Nothing else on the home network }
+        - { rule: reject, to: "fe80::/10", comment: Nor over IPv6 link-local }
+
+    # Docker forwards its containers' traffic past ufw's own rules, so the job
+    # containers get the same block in the chain Docker leaves for this. ufw
+    # loads the file on start and reload; naming the chain empties it first, so
+    # a reload doesn't stack copies.
+    - name: Keep job containers off the home network
+      ansible.builtin.blockinfile:
+        path: /etc/ufw/after.rules
+        marker: "# {mark} runner: job containers and the home network (Ansible)"
+        block: |
+          *filter
+          :DOCKER-USER - [0:0]
+          -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+          -A DOCKER-USER -d {{ home_router }}/32 -p udp -m udp --dport 53 -j RETURN
+          -A DOCKER-USER -d {{ home_router }}/32 -p tcp -m tcp --dport 53 -j RETURN
+          -A DOCKER-USER -d {{ home_lan }} -j REJECT --reject-with icmp-port-unreachable
+          -A DOCKER-USER -j RETURN
+          COMMIT
+      notify: Reload the firewall
+
+    - name: Turn the firewall on
+      community.general.ufw:
+        state: enabled
+
+  handlers:
+    - name: Reload the firewall
+      community.general.ufw:
+        state: reloaded

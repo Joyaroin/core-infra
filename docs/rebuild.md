@@ -101,6 +101,14 @@ where `<host>` is the guest's Proxmox host (jotaro for echoes, joseph for the re
 After the first run, the extra `-e` values aren't needed. Re-running any
 playbook should report `changed=0`.
 
+`runner.yml` also firewalls echoes off from the home network, in both
+directions, for the VM and for the job containers Docker runs on it. It can
+still reach the internet, DNS on the router, and the tailnet. Two exceptions
+on the home network: SSH in from jotaro (how Ansible gets there), and one UDP
+port out to forgejo, which is Tailscale's direct path to git. If a rule locks
+Ansible out, switch the firewall off from jotaro with
+`qm guest exec 205 -- ufw disable`.
+
 ## 5. Tailscale admin console (manual)
 
 - **DNS:** Terraform sets it (`terraform/tailscale.tf`). If heavens-door came

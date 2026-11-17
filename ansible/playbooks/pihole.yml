@@ -4,7 +4,7 @@
 
 # Only root@pam may pass devices into a container, so Terraform can't do this.
 - name: Give heavens-door /dev/net/tun (Tailscale needs it)
-  hosts: proxmox
+  hosts: joseph # the host that holds the container, not every Proxmox host
   vars:
     vm_id: "{{ hostvars['heavens-door'].vm_id }}"
 
