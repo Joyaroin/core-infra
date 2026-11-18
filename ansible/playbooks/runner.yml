@@ -36,27 +36,45 @@
     # A safety net, not a speed-up: echoes has had no OOM kill and almost no memory stall, but a release job runs
     # Chromium next to an npm build in 9 GB with no swap at all. A small swap file takes a spike instead of the OOM
     # killer, and swappiness 10 keeps the kernel off it otherwise. (zram needs linux-modules-extra, which this cloud kernel lacks.)
+    # Each step checks the state, not whether the file was just made, so a run cut off half way is repaired by the next,
+    # and the checks report a change in --check, so the drift check sees swap that is off.
     - name: Make a 2 GB swap file
-      ansible.builtin.command: fallocate -l 2G /swapfile
+      ansible.builtin.shell: umask 077 && fallocate -l 2G /swapfile
       args:
         creates: /swapfile
-      register: swapfile
+
+    - name: Check the swap file is formatted as swap
+      ansible.builtin.command: blkid -o value -s TYPE /swapfile
+      register: swap_type
+      changed_when: swap_type.stdout != "swap"
+      failed_when: false
+      check_mode: false
+
+    - name: Format the swap file
+      ansible.builtin.command: mkswap /swapfile
+      when: swap_type.stdout != "swap"
+
+    - name: Check the swap file is on
+      ansible.builtin.command: swapon --show=NAME --noheadings
+      register: swaps
+      changed_when: "'/swapfile' not in swaps.stdout_lines"
+      check_mode: false
 
     - name: Turn the swap file on
-      ansible.builtin.shell: chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
-      when: swapfile.changed
+      ansible.builtin.command: swapon /swapfile
+      when: "'/swapfile' not in swaps.stdout_lines"
 
     - name: Turn the swap file on at boot
       ansible.builtin.lineinfile:
         path: /etc/fstab
         line: /swapfile none swap sw 0 0
 
+    # Compares the live value too, so a value written but not applied shows as drift.
     - name: Swap only under real memory pressure
-      ansible.builtin.copy:
-        dest: /etc/sysctl.d/90-runner.conf
-        content: "vm.swappiness = 10\n"
-        mode: "0644"
-      notify: Apply sysctl settings
+      ansible.posix.sysctl:
+        name: vm.swappiness
+        value: "10"
+        sysctl_file: /etc/sysctl.d/90-runner.conf
 
     # Housekeeping, not speed: job containers are removed when their job ends, and their logs with them. The storage
     # driver is left alone: Docker 29 already uses the containerd image store (overlayfs), and moving to the older
@@ -71,6 +89,11 @@
             "log-opts": { "max-size": "10m", "max-file": "3" }
           }
       notify: Restart Docker
+
+    # Restart now, not at the end of the play: if a later task failed, the new file would sit unapplied and no later
+    # run would notice, since the file would already match.
+    - name: Apply the Docker settings
+      ansible.builtin.meta: flush_handlers
 
     # Once a week, clears what jobs leave behind: stopped containers, unused networks, untagged images and build cache
     # older than a week. Not tagged images (no --all), so the job images stay pulled and no job waits on a 3 GB pull.
@@ -297,9 +320,6 @@
     - name: Reload the firewall
       community.general.ufw:
         state: reloaded
-
-    - name: Apply sysctl settings
-      ansible.builtin.command: sysctl --system
 
     - name: Restart Docker
       ansible.builtin.systemd_service:
