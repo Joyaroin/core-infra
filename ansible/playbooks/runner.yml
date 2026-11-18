@@ -33,6 +33,85 @@
         name: qemu-guest-agent
         state: started
 
+    # A safety net, not a speed-up: echoes has had no OOM kill and almost no memory stall, but a release job runs
+    # Chromium next to an npm build in 9 GB with no swap at all. A small swap file takes a spike instead of the OOM
+    # killer, and swappiness 10 keeps the kernel off it otherwise. (zram needs linux-modules-extra, which this cloud kernel lacks.)
+    - name: Make a 2 GB swap file
+      ansible.builtin.command: fallocate -l 2G /swapfile
+      args:
+        creates: /swapfile
+      register: swapfile
+
+    - name: Turn the swap file on
+      ansible.builtin.shell: chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+      when: swapfile.changed
+
+    - name: Turn the swap file on at boot
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: /swapfile none swap sw 0 0
+
+    - name: Swap only under real memory pressure
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/90-runner.conf
+        content: "vm.swappiness = 10\n"
+        mode: "0644"
+      notify: Apply sysctl settings
+
+    # Housekeeping, not speed: job containers are removed when their job ends, and their logs with them. The storage
+    # driver is left alone: Docker 29 already uses the containerd image store (overlayfs), and moving to the older
+    # overlay2 driver would hide every image already pulled. Changing this file restarts Docker, which kills running jobs.
+    - name: Rotate container logs
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+        content: |
+          {
+            "log-driver": "json-file",
+            "log-opts": { "max-size": "10m", "max-file": "3" }
+          }
+      notify: Restart Docker
+
+    # Once a week, clears what jobs leave behind: stopped containers, unused networks, untagged images and build cache
+    # older than a week. Not tagged images (no --all), so the job images stay pulled and no job waits on a 3 GB pull.
+    - name: Install the weekly Docker prune
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.name }}"
+        mode: "0644"
+        content: "{{ item.content }}"
+      loop:
+        - name: docker-prune.service
+          content: |
+            [Unit]
+            Description=Prune unused Docker data
+            Requires=docker.service
+            After=docker.service
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/bin/docker system prune --force --filter until=168h
+        - name: docker-prune.timer
+          content: |
+            [Unit]
+            Description=Prune unused Docker data weekly
+
+            [Timer]
+            OnCalendar=weekly
+            RandomizedDelaySec=1h
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Start the weekly Docker prune
+      ansible.builtin.systemd_service:
+        name: docker-prune.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+
     - name: Install Tailscale
       ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
       args:
@@ -218,3 +297,11 @@
     - name: Reload the firewall
       community.general.ufw:
         state: reloaded
+
+    - name: Apply sysctl settings
+      ansible.builtin.command: sysctl --system
+
+    - name: Restart Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        state: restarted
