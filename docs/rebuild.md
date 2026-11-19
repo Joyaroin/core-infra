@@ -81,14 +81,15 @@ R2 keeps no old versions of the state. After an apply that matters, keep a
 copy: `terraform state pull > ~/core-infra-tfstate-$(date +%F).json`.
 
 This downloads the Ubuntu images and creates heavens-door and hermit on
-joseph, and echoes on jotaro. It also sets up the backup jobs.
+joseph, and echoes on jotaro. It also sets up the backup jobs. heavens-door
+(the retired Pi-hole) is created stopped; skip its playbook unless you
+bring it back.
 
 ## 4. Inside the guests
 
 From `ansible/`:
 
 ```sh
-ansible-playbook playbooks/pihole.yml -e tailscale_authkey=tskey-... -e pihole_password=...
 ansible-playbook playbooks/runner.yml -e tailscale_authkey=tskey-...   # tag:ci key
 ansible-playbook playbooks/hermit.yml -e tailscale_authkey=tskey-... -e registry_password=...
 ```
@@ -111,9 +112,8 @@ Ansible out, switch the firewall off from jotaro with
 
 ## 5. Tailscale admin console (manual)
 
-- **DNS:** Terraform sets it (`terraform/tailscale.tf`). If heavens-door came
-  back with a new Tailscale IP, put the new IP there and `terraform apply`.
-  The access rules are in `terraform/tailscale-policy.hujson`.
+- **DNS:** Terraform sets it (`terraform/tailscale.tf`): MagicDNS on, no
+  custom nameservers. The access rules are in `terraform/tailscale-policy.hujson`.
 - **hermit's machine page → Edit IP:** set it back to `100.80.32.26`. The k3s
   certificate and the kubeconfig name that IP.
 - Remove the dead machines, and rename any new one that came back with a `-1`
@@ -133,8 +133,8 @@ In the gitops repo, follow "Bootstrapping a cluster" in its README:
 
 ## 7. Router (manual)
 
-Home DNS points at `192.168.2.13` (heavens-door). Terraform keeps that IP and
-the old MAC address, so nothing should need changing.
+Home DNS uses the router's own resolver. Nothing on the LAN depends on
+heavens-door, so nothing should need changing.
 
 ## After any power cut
 

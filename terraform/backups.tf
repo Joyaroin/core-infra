@@ -20,7 +20,7 @@ resource "proxmox_backup_job" "pihole_daily" {
   vmid           = ["206"] # heavens-door
   mode           = "snapshot"
   compress       = "zstd"
-  enabled        = true
+  enabled        = false # heavens-door is retired; old backups are kept
   notes_template = "{{guestname}}"
   prune_backups = {
     "keep-last" = "3"

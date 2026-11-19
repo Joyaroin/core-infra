@@ -20,7 +20,8 @@ case $? in
   *) drifted+=("terraform (failed)") ;;
 esac
 
-for playbook in proxmox-host pihole runner hermit; do
+# pihole is left out: heavens-door is retired and kept stopped.
+for playbook in proxmox-host runner hermit; do
   echo "== ansible $playbook"
   output="$(cd ansible && ansible-playbook "playbooks/$playbook.yml" --check --diff 2>&1)"
   status=$?

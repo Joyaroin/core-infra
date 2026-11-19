@@ -148,7 +148,7 @@
       check_mode: false # run even in --check, so drift checks see it
 
     - name: Join the tailnet
-      # accept-dns=false: the tailnet's DNS is Pi-hole, which tag:ci can't reach.
+      # accept-dns=false: echoes uses its own DNS, not the tailnet's.
       ansible.builtin.command: tailscale up --authkey={{ tailscale_authkey }} --hostname=echoes --accept-dns=false
       when: tailscale_status.rc != 0
       no_log: true

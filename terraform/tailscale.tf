@@ -4,12 +4,9 @@ resource "tailscale_acl" "policy" {
   acl = file("${path.module}/tailscale-policy.hujson")
 }
 
-# Every tailnet device asks heavens-door's Pi-hole for DNS.
+# MagicDNS answers tailnet names; everything else goes to each device's own
+# DNS. (The Pi-hole on heavens-door used to be the tailnet's DNS; it's retired.)
 resource "tailscale_dns_configuration" "dns" {
   magic_dns          = true
-  override_local_dns = true
-
-  nameservers {
-    address = "100.94.141.122" # heavens-door's Tailscale IP
-  }
+  override_local_dns = false
 }

@@ -1,9 +1,11 @@
-# Pi-hole: DNS for the home network. Built from scratch;
+# Retired Pi-hole, kept stopped. Its blocklist never loaded, so it blocked
+# nothing; the tailnet no longer uses it for DNS. Built from scratch;
 # ansible/playbooks/pihole.yml installs everything inside.
 resource "proxmox_virtual_environment_container" "heavens_door" {
   node_name     = var.proxmox_node
   vm_id         = 206
-  start_on_boot = true
+  started       = false
+  start_on_boot = false
   unprivileged  = true
 
   memory {
@@ -29,8 +31,7 @@ resource "proxmox_virtual_environment_container" "heavens_door" {
 
     ip_config {
       ipv4 {
-        address = "192.168.2.13/24"
-        gateway = var.gateway
+        address = "dhcp" # changed outside Terraform; matches the live container
       }
     }
 
@@ -42,7 +43,7 @@ resource "proxmox_virtual_environment_container" "heavens_door" {
   network_interface {
     name        = "eth0"
     bridge      = "vmbr0"
-    mac_address = "BC:24:11:95:2E:9A" # the old Pi-hole's, so the router sees no change
+    mac_address = "BC:24:11:9C:E5:A2" # changed outside Terraform; matches the live container
   }
 
   operating_system {
