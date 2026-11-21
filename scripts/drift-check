@@ -8,7 +8,7 @@
 # Runs weekly on the Mac (scripts/drift-check.plist), because the Terraform
 # state lives there and CI isn't allowed to reach joseph.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 drifted=()
 

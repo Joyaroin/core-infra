@@ -1,0 +1,82 @@
+# Static checks only. The runner is firewalled off the home network, so nothing here plans or applies:
+# scripts/drift-check does that on the Mac each week. What CI does catch: Terraform that won't format, init or validate
+# (a provider bump whose lock file doesn't match fails here), playbooks that won't parse, new ansible-lint findings
+# (.ansible-lint-ignore holds the old ones), ShellCheck findings in scripts/, and secrets anywhere in the git history.
+# Runs on every push to every branch, so Renovate's branches get a status: its weekly non-major PR merges itself once
+# this is green, and a red run leaves it for a person.
+# Every job but secret-scan runs in this repo's CI image (ci/Dockerfile), which ci-image builds only when ci/ changes.
+name: ci
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  ci-image:
+    uses: adham/ci/.forgejo/workflows/build-ci-image.yml@v3.0.1
+    with:
+      image: git.tailf69bc5.ts.net/adham/core-infra-ci
+      registry-user: adham
+    secrets: inherit # it reads REGISTRY_TOKEN
+
+  terraform:
+    needs: ci-image
+    runs-on: docker
+    container:
+      image: ${{ needs.ci-image.outputs.image }}
+      credentials:
+        username: adham
+        password: ${{ secrets.REGISTRY_TOKEN }}
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Formatting
+        run: terraform -chdir=terraform fmt -check -recursive -diff
+      # No backend, so no state and no credentials: init only downloads the providers .terraform.lock.hcl names, and
+      # fails if the lock file doesn't cover versions.tf rather than rewriting it.
+      - name: Init without the backend
+        run: terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+      - name: Validate
+        run: terraform -chdir=terraform validate
+
+  ansible:
+    needs: ci-image
+    runs-on: docker
+    container:
+      image: ${{ needs.ci-image.outputs.image }}
+      credentials:
+        username: adham
+        password: ${{ secrets.REGISTRY_TOKEN }}
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Syntax check every playbook
+        working-directory: ansible
+        run: for p in playbooks/*.yml; do ansible-playbook --syntax-check "$p"; done
+      - name: ansible-lint
+        run: ansible-lint
+
+  shellcheck:
+    needs: ci-image
+    runs-on: docker
+    container:
+      image: ${{ needs.ci-image.outputs.image }}
+      credentials:
+        username: adham
+        password: ${{ secrets.REGISTRY_TOKEN }}
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # Every file in scripts/ whose first line runs a shell.
+      - name: ShellCheck scripts/
+        run: grep -lE '^#!.*\b(ba|da)?sh\b' -r scripts | xargs --no-run-if-empty shellcheck
+
+  secret-scan:
+    runs-on: docker
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # the action refuses a shallow clone
+          persist-credentials: false
+      - uses: https://git.tailf69bc5.ts.net/adham/ci/actions/secret-scan@v3.0.1
