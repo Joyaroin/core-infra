@@ -1,4 +1,19 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>adham/ci//renovate/default"]
+  "extends": [
+    "local>adham/ci//renovate/default"
+  ],
+  "customManagers": [
+    {
+      "description": "The runner's default job image in the runner playbook, pinned by digest.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)ansible/playbooks/runner\\.yml$/"
+      ],
+      "matchStrings": [
+        "runner_image: \"(?<depName>[^:\"]+):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ]
 }

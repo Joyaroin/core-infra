@@ -8,7 +8,11 @@
   vars:
     runner_version: "13.2.1"
     forgejo_url: https://git.tailf69bc5.ts.net
-    runner_labels: "docker:docker://node:22-bookworm,ubuntu-latest:docker://node:22-bookworm"
+    # The image a job runs in when it names none, pinned by digest so every job, and a rebuilt echoes, gets the same one.
+    # Renovate keeps the digest current (renovate.json). The labels go in config.yml too, which the daemon reads over the
+    # ones saved at registration.
+    runner_image: "node:22.23.5-bookworm@sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+    runner_labels: "docker:docker://{{ runner_image }},ubuntu-latest:docker://{{ runner_image }}"
     runner_home: /var/lib/forgejo-runner
     # The firewall: the home network, and the few things on it the runner still needs.
     home_lan: 192.168.2.0/24
@@ -95,8 +99,29 @@
     - name: Apply the Docker settings
       ansible.builtin.meta: flush_handlers
 
+    # Old CI images are tagged, so the prune below keeps them: each changed ci/Dockerfile leaves a few GB behind. This keeps
+    # the 2 newest of each CI image repository and removes the rest; the weekly prune runs it.
+    - name: Install the CI image cleanup
+      ansible.builtin.copy:
+        dest: /usr/local/bin/prune-ci-images
+        mode: "0755"
+        # raw: the script's docker format string ({{.Repository}}) isn't an Ansible template.
+        content: |
+          {% raw %}#!/bin/sh
+          # Removes old CI images from this runner's disk. For each CI image repository from the Forgejo registry
+          # (git.tailf69bc5.ts.net/<owner>/<name>-ci), keeps the 2 newest by creation time and removes the rest. Docker
+          # refuses to remove an image a container is using, so a running job keeps its image.
+          set -u
+          docker image ls --format '{{.Repository}} {{.Tag}} {{.CreatedAt}}' \
+            | awk '$1 ~ /^git\.tailf69bc5\.ts\.net\/[^\/]+\/[^\/]+-ci$/ && $2 != "<none>"' \
+            | sort -k1,1 -k3,4r \
+            | awk '{ n[$1]++; if (n[$1] > 2) print $1 ":" $2 }' \
+            | xargs -r docker image rm || true
+          {% endraw %}
+
     # Once a week, clears what jobs leave behind: stopped containers, unused networks, untagged images and build cache
     # older than a week. Not tagged images (no --all), so the job images stay pulled and no job waits on a 3 GB pull.
+    # Then old CI images (prune-ci-images, above).
     - name: Install the weekly Docker prune
       ansible.builtin.copy:
         dest: "/etc/systemd/system/{{ item.name }}"
@@ -113,6 +138,7 @@
             [Service]
             Type=oneshot
             ExecStart=/usr/bin/docker system prune --force --filter until=168h
+            ExecStart=/usr/local/bin/prune-ci-images
         - name: docker-prune.timer
           content: |
             [Unit]
@@ -188,10 +214,13 @@
             file: .runner
             capacity: 3
             timeout: 3h
+            labels: ["docker:docker://{{ runner_image }}", "ubuntu-latest:docker://{{ runner_image }}"]
           container:
             # Job containers can't use Tailscale's DNS, so point them at forgejo directly.
             options: "--add-host=git.tailf69bc5.ts.net:100.95.34.20"
             docker_host: "-"
+      # The daemon reads its config only at start. Restarting it kills a running job, so apply when CI is quiet.
+      notify: Restart the runner
 
     - name: Check whether the runner is registered
       ansible.builtin.stat:
@@ -324,4 +353,9 @@
     - name: Restart Docker
       ansible.builtin.systemd_service:
         name: docker
+        state: restarted
+
+    - name: Restart the runner
+      ansible.builtin.systemd_service:
+        name: forgejo-runner
         state: restarted
