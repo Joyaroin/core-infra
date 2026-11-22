@@ -28,11 +28,11 @@ terraform {
     # "proxmox" is the local name we'll use in this code.
     proxmox = {
       source  = "bpg/proxmox" # registry.terraform.io/bpg/proxmox
-      version = "~> 0.122.0"  # allows 0.122.x only
+      version = "~> 0.123.0"  # allows 0.122.x only
     }
     tailscale = {
       source  = "tailscale/tailscale"
-      version = "~> 0.29.0"
+      version = "~> 0.30.0"
     }
   }
 }
