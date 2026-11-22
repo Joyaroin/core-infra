@@ -1,0 +1,19 @@
+# ansible-lint's baseline: the rule violations the playbooks had when CI started linting them. ansible-lint doesn't fail on
+# these, so CI fails only on new ones. Each line is a file and a rule, so a new violation of a listed rule in a listed file
+# isn't caught until that line goes. Fix a line's violations in their own PR, apply it, and delete the line.
+ansible/playbooks/hermit.yml command-instead-of-module
+ansible/playbooks/hermit.yml name[casing]
+ansible/playbooks/hermit.yml no-changed-when
+ansible/playbooks/hermit.yml risky-file-permissions
+ansible/playbooks/hermit.yml risky-shell-pipe
+ansible/playbooks/pihole.yml command-instead-of-module
+ansible/playbooks/pihole.yml no-changed-when
+ansible/playbooks/pihole.yml no-handler
+ansible/playbooks/pihole.yml risky-shell-pipe
+ansible/playbooks/proxmox-host.yml no-changed-when
+ansible/playbooks/proxmox-host.yml risky-file-permissions
+ansible/playbooks/proxmox-host.yml yaml[line-length]
+ansible/playbooks/runner.yml command-instead-of-module
+ansible/playbooks/runner.yml no-changed-when
+ansible/playbooks/runner.yml partial-become[task]
+ansible/playbooks/runner.yml risky-shell-pipe

@@ -1,0 +1,4 @@
+# What the CI image installs with pip. Same Ansible as the Mac that applies the playbooks, so CI checks what runs.
+# Renovate bumps these: a minor or patch in the weekly PR, a major only once it's ticked on the Dependency Dashboard.
+ansible==14.6.0
+ansible-lint==26.11.0

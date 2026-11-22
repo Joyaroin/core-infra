@@ -1,0 +1,7 @@
+# ansible-lint's settings for CI (.forgejo/workflows/ci.yml) and for running it by hand from the repo root.
+# offline: don't try to install collections; the CI image's ansible package already has them.
+offline: true
+exclude_paths:
+  - terraform/
+  - ci/
+  - .forgejo/

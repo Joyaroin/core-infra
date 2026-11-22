@@ -5,6 +5,8 @@ provider "registry.terraform.io/bpg/proxmox" {
   version     = "0.122.0"
   constraints = "~> 0.122.0"
   hashes = [
+    "h1:+f+p15bWz/PO3BB41kun2dTuDD0vJ6vtKYoteJJjiSA=",
+    "h1:GO1QkSFuXOdgVnYKymKoF8fvj5TSCLdrHqFYdlXuXnM=",
     "h1:e+HI0QmD9c++ZNsWrot88YfaYDlQkxISS4jHrM84Er0=",
     "zh:3290d2d188526653a7d15e6f9ff8be110aa5f50443d4b8f4b99e013601564b79",
     "zh:37be5f002e5b68e128894f4cfc5bb28858de06dacac78944a28578595b757035",
@@ -28,6 +30,8 @@ provider "registry.terraform.io/tailscale/tailscale" {
   constraints = "~> 0.29.0"
   hashes = [
     "h1:NzPJkm2LXtAy4YRLShIxQuMbTtY0kYhiIPYs8ae2j5M=",
+    "h1:gbQM/I1hj6603QLFBnFkfl6OpszdO9dsfPuvzXOgldQ=",
+    "h1:qk5qn6QMGyf4d67jbVRtZfuzHYTZtQx0vl6WrB6v4PU=",
     "zh:3579ed6446d214e403e4f2d28faab47d3326f3560e48ca9f510f0940fb40420d",
     "zh:37fba80d3387ef7c7ba4f95231ff494e2e1cd12c066c6df4d45ae275bc8a3062",
     "zh:529844f9b4d9dac0d6bc9db0f19b8f6207b9e3f0e0f484e33419764a236ebc49",
